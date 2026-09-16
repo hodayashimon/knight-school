@@ -68,6 +68,23 @@
 <script src="js/puzzles.js"></script>
 <script src="js/guide.js"></script>
 <script src="js/app.js"></script>
+<script>
+  /*
+   * Registers the offline cache only when it can actually do something:
+   * service workers require a secure origin, which file:// never is (that
+   * copy already works offline with no help, since it makes no network calls)
+   * and which localhost is exempted into for local testing.
+   */
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function (err) {
+        /* A blocked or failed registration should not be fatal - the app
+           still works online, it just will not work offline this time. */
+        if (window.console) console.warn('Offline caching unavailable:', err);
+      });
+    });
+  }
+</script>
 
 </body>
 </html>
