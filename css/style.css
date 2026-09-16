@@ -1,0 +1,583 @@
+/* =================================================================
+   Chess - styles
+   ================================================================= */
+
+:root {
+  --bg:            #14161a;
+  --bg-raised:     #1c1f26;
+  --bg-sunken:     #101216;
+  --border:        #2b303a;
+  --text:          #dfe3ea;
+  --text-dim:      #98a1b0;
+  --text-faint:    #6b7484;
+  --accent:        #7aa2f7;
+  --accent-dim:    #3d5a8a;
+  --good:          #63d18a;
+  --bad:           #ff6b6b;
+  --warn:          #ffd479;
+
+  --square-light:  #ebecd0;
+  --square-dark:   #779556;
+  --mark-move:     rgba(255, 212, 121, 0.55);
+  --mark-check:    rgba(255, 70, 70, 0.75);
+  --mark-hint:     rgba(122, 162, 247, 0.55);
+  --mark-target:   rgba(20, 22, 26, 0.28);
+  --mark-select:   rgba(255, 212, 121, 0.75);
+
+  --radius: 10px;
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+  --chess-font: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+/* Padding is left alone on `html` on purpose: when this page is embedded in a
+   host that pads the root for a phone's safe-area insets, zeroing it here
+   would push content under the system bars. */
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { margin: 0 0 8px; line-height: 1.25; font-weight: 600; }
+p { margin: 0 0 12px; }
+p:last-child { margin-bottom: 0; }
+ul { margin: 0 0 12px; padding-left: 20px; }
+li { margin-bottom: 6px; }
+strong { color: #fff; font-weight: 600; }
+em { color: var(--text-dim); }
+a { color: var(--accent); }
+
+/* ---------- app frame ---------- */
+
+.app {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.brand .logo { font-family: var(--chess-font); font-size: 26px; color: var(--accent); line-height: 1; }
+.brand .sub { font-size: 13px; font-weight: 400; color: var(--text-faint); }
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-inline-start: auto;   /* follows the writing direction */
+  background: var(--bg-sunken);
+  padding: 4px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 7px 16px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { background: var(--accent); color: #0e1116; }
+
+/* ---------- layout ---------- */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 22px;
+  align-items: start;
+}
+
+.layout.wide { grid-template-columns: 1fr; }
+
+.panel {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.panel + .panel { margin-top: 16px; }
+.panel h2 { font-size: 15px; }
+.panel .muted { color: var(--text-dim); font-size: 13px; }
+
+/* ---------- board ---------- */
+
+.board-area { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.board-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.board {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.board .squares { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(8, 1fr); }
+
+.sq { position: relative; }
+.sq.light { background: var(--square-light); }
+.sq.dark  { background: var(--square-dark); }
+
+.sq .coord {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.65;
+  pointer-events: none;
+}
+.sq .coord.file { right: 3px; bottom: 1px; }
+.sq .coord.rank { left: 3px; top: 1px; }
+.sq.light .coord { color: var(--square-dark); }
+.sq.dark  .coord { color: var(--square-light); }
+
+/* marker layers sit above the squares but below the pieces */
+.board .markers { position: absolute; inset: 0; pointer-events: none; }
+
+/* Scoped to .board on purpose: these are square overlays positioned as a
+   fraction of the board, and an unscoped .mark would capture anything else
+   on the page that happens to use the same word. */
+.board .mark {
+  position: absolute;
+  width: 12.5%;
+  height: 12.5%;
+  transition: opacity 0.12s;
+}
+.board .mark.lastmove   { background: var(--mark-move); }
+.board .mark.selected   { background: var(--mark-select); }
+.board .mark.highlight  { background: var(--mark-hint); }
+.board .mark.check      { background: radial-gradient(circle, var(--mark-check) 25%, transparent 72%); }
+
+/* a dot for an empty destination, a ring for a capture */
+.board .mark.target::after {
+  content: "";
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 30%; height: 30%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--mark-target);
+}
+.board .mark.target.capture::after {
+  width: 92%; height: 92%;
+  background: transparent;
+  border: 6px solid var(--mark-target);
+}
+
+.board .pieces { position: absolute; inset: 0; }
+
+.piece {
+  position: absolute;
+  width: 12.5%;
+  height: 12.5%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--chess-font);
+  font-size: 0px;             /* set from script to match board size */
+  line-height: 1;
+  cursor: grab;
+  transition: left 0.16s ease, top 0.16s ease;
+  will-change: left, top;
+}
+.piece.no-anim { transition: none; }
+.piece.dragging { cursor: grabbing; z-index: 30; transition: none; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.5)); }
+.board.static .piece { cursor: default; }
+
+/* Both colours use the solid glyphs; the outline is what tells them apart,
+   which renders far more consistently than mixing solid and hollow glyphs. */
+.piece .glyph { pointer-events: none; }
+.piece.w .glyph {
+  color: #fff;
+  -webkit-text-stroke: 1.6px #2a2a30;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.piece.b .glyph {
+  color: #2a2a30;
+  -webkit-text-stroke: 1.2px #14141a;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- promotion picker ---------- */
+
+.promo {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 12, 16, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+.promo-inner {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+.promo-inner p { font-size: 13px; color: var(--text-dim); margin-bottom: 10px; }
+.promo-options { display: flex; gap: 6px; }
+.promo-option {
+  width: 60px; height: 60px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  cursor: pointer;
+  font-family: var(--chess-font);
+  font-size: 40px;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.promo-option:hover { border-color: var(--accent); background: #232833; }
+
+/* ---------- controls ---------- */
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent-dim); background: #232833; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #0e1116; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: #8fb4ff; border-color: #8fb4ff; }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.field { margin-bottom: 12px; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); margin-bottom: 5px; }
+
+select {
+  width: 100%;
+  appearance: none;
+  background: var(--bg-sunken);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+select:focus { outline: 2px solid var(--accent-dim); outline-offset: -1px; }
+
+/* ---------- status ---------- */
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  min-height: 46px;
+}
+.status .dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+.status .dot.w { background: #f0f0ea; }
+.status .dot.b { background: #33343c; border: 1px solid #55565f; }
+.status .dot.thinking { background: var(--warn); animation: pulse 1s ease-in-out infinite; }
+.status.over { border-color: var(--accent-dim); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* ---------- captured material ---------- */
+
+.captured {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 24px;
+  font-family: var(--chess-font);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-dim);
+}
+
+/* Before anything has been captured these rows hold nothing, and reserving
+   their height leaves a band of dead space above and below the board on the
+   opening position - which is the first thing anyone sees. */
+.captured:empty { display: none; }
+.captured .score { font-family: var(--font); font-size: 12px; color: var(--text-faint); margin-left: 6px; }
+
+/* ---------- move list ---------- */
+
+.moves {
+  max-height: 260px;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+}
+.moves-row { display: grid; grid-template-columns: 38px 1fr 1fr; }
+.moves-row:nth-child(odd) { background: rgba(255, 255, 255, 0.02); }
+.moves-row .num { color: var(--text-faint); padding: 4px 8px; }
+.moves-row .ply { padding: 4px 8px; color: var(--text); }
+.moves-empty { padding: 10px; color: var(--text-faint); font-family: var(--font); font-size: 13px; }
+
+/* ---------- learn: chapter and lesson lists ---------- */
+
+.chapter { margin-bottom: 18px; }
+.chapter-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+.chapter-head h3 { font-size: 15px; margin: 0; }
+.chapter-head .count { font-size: 12px; color: var(--text-faint); margin-left: auto; }
+.chapter .summary { font-size: 13px; color: var(--text-dim); margin-bottom: 10px; }
+
+.lesson-list { display: grid; gap: 6px; }
+
+.lesson-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.lesson-item:hover { border-color: var(--accent-dim); background: #232833; }
+.lesson-item .tick {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: transparent;
+}
+.lesson-item.done .tick { background: var(--good); border-color: var(--good); color: #0e1116; }
+.lesson-item .badge {
+  margin-left: auto;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1px 8px;
+}
+
+.progress-bar { height: 5px; background: var(--bg-sunken); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+.progress-bar span { display: block; height: 100%; background: var(--good); transition: width 0.3s; }
+
+/* ---------- learn: lesson view ---------- */
+
+.lesson-text { font-size: 14.5px; }
+.lesson-text p { margin-bottom: 11px; }
+
+.crumb {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-faint);
+  margin-bottom: 10px;
+}
+.crumb button {
+  appearance: none; border: 0; background: none; padding: 0;
+  color: var(--accent); font: inherit; font-size: 12px; cursor: pointer;
+}
+
+.task {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-dim);
+  background: rgba(122, 162, 247, 0.07);
+  font-size: 14px;
+}
+.task .label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--accent); font-weight: 600; margin-bottom: 4px;
+}
+.task.correct { border-color: var(--good); background: rgba(99, 209, 138, 0.09); }
+.task.correct .label { color: var(--good); }
+.task.wrong { border-color: var(--bad); background: rgba(255, 107, 107, 0.09); }
+.task.wrong .label { color: var(--bad); }
+
+.task-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+/* ---------- puzzles ---------- */
+
+.puzzle-list { display: grid; gap: 6px; }
+.puzzle-item { display: flex; align-items: center; gap: 10px; }
+.puzzle-item .theme { font-size: 12px; color: var(--text-faint); }
+.pips { display: inline-flex; gap: 2px; margin-left: auto; }
+.pip { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+.pip.on { background: var(--warn); }
+
+/* ---------- language ---------- */
+
+.lang { flex: none; }
+.lang select { width: auto; min-width: 104px; padding: 6px 10px; font-size: 13px; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * Right-to-left languages flip the page, but never the board. A chessboard
+ * has a fixed geometry - the a-file is on White's left, always - so mirroring
+ * it would put the pieces on the wrong squares as far as any chess player is
+ * concerned. Forcing direction back to ltr on the board keeps the grid order,
+ * the coordinate labels and the absolute piece positions all correct.
+ */
+[dir="rtl"] .board,
+[dir="rtl"] .board-wrap,
+[dir="rtl"] .captured,
+[dir="rtl"] .moves { direction: ltr; }
+
+/* Notation and the move list stay left-to-right, but the panel heading
+   above them should still sit on the reading side. */
+[dir="rtl"] .panel > h2,
+[dir="rtl"] .panel > .muted { direction: rtl; }
+
+/* .tabs and .lang use margin-inline-start, which flips on its own. */
+[dir="rtl"] .captured .score { margin-left: 0; margin-right: 6px; }
+[dir="rtl"] .chapter-head .count { margin-left: 0; margin-right: auto; }
+[dir="rtl"] .lesson-item .badge { margin-left: 0; margin-right: auto; }
+[dir="rtl"] .pips { margin-left: 0; margin-right: auto; }
+[dir="rtl"] .sq .coord.file { right: auto; left: 3px; }
+[dir="rtl"] .sq .coord.rank { left: auto; right: 3px; }
+
+/* The coordinate labels live inside the forced-ltr board, so put them back
+   where they belong rather than letting the rtl rules above reach them. */
+[dir="rtl"] .board .sq .coord.file { left: auto; right: 3px; }
+[dir="rtl"] .board .sq .coord.rank { right: auto; left: 3px; }
+
+[dir="rtl"] .guide-table .guide-key { padding-right: 0; padding-left: 18px; }
+[dir="rtl"] ul { padding-left: 0; padding-right: 20px; }
+
+/* ---------- guide ---------- */
+
+.hidden { display: none !important; }
+
+.guide { max-width: 780px; margin: 0 auto; }
+.guide > .muted { margin-bottom: 4px; }
+
+.guide h3 {
+  margin: 26px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.guide h3:first-of-type { margin-top: 18px; }
+
+.guide-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.guide-table td { padding: 8px 0; border-top: 1px solid var(--border); vertical-align: top; }
+.guide-table tr:first-child td { border-top: 0; }
+.guide-table .guide-key {
+  width: 210px;
+  padding-right: 18px;
+  color: #fff;
+  font-weight: 500;
+}
+
+@media (max-width: 620px) {
+  .guide-table td { display: block; border-top: 0; padding: 0; }
+  .guide-table tr { display: block; padding: 9px 0; border-top: 1px solid var(--border); }
+  .guide-table tr:first-child { border-top: 0; }
+  .guide-table .guide-key { width: auto; padding-right: 0; margin-bottom: 2px; }
+}
+
+/* ---------- misc ---------- */
+
+.hint-text { color: var(--text-dim); font-size: 13.5px; }
+.kbd {
+  font-family: var(--mono); font-size: 12px;
+  background: var(--bg-sunken); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px;
+}
+
+.footnote { margin-top: 18px; font-size: 12px; color: var(--text-faint); text-align: center; }
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .app { padding: 14px; }
+  .topbar { gap: 12px 10px; }
+
+  /* The tabs need the full width here, so they take their own row and the
+     language menu rides up beside the wordmark rather than sitting alone. */
+  .lang { order: 1; margin-inline-start: auto; }
+  .tabs { order: 2; margin-inline-start: 0; width: 100%; }
+  .tab { flex: 1; text-align: center; }
+
+  .board-wrap { max-width: 100%; }
+}
+
+@media (max-width: 480px) {
+  body { font-size: 14px; }
+  .brand .sub { display: none; }
+  .sq .coord { font-size: 8px; }
+}

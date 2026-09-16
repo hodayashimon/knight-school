@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chess engine tests</title>
+<style>
+  body { font: 14px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; background: #14161a; color: #dfe3ea; padding: 24px; }
+  h1 { font-size: 16px; color: #8fb6ff; }
+  .pass { color: #63d18a; }
+  .fail { color: #ff6b6b; font-weight: bold; }
+  #summary { margin-top: 16px; padding: 10px; border-left: 3px solid #8fb6ff; }
+  pre { white-space: pre-wrap; margin: 0; }
+</style>
+</head>
+<body>
+<h1>Chess engine test suite</h1>
+<pre id="out">running…</pre>
+<div id="summary"></div>
+
+<script src="js/i18n.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/guide.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var out = document.getElementById('out');
+  var lines = [];
+  var passed = 0, failed = 0;
+
+  function log(s, cls) {
+    lines.push(cls ? '<span class="' + cls + '">' + s + '</span>' : s);
+    out.innerHTML = lines.join('\n');
+  }
+
+  function eq(label, actual, expected) {
+    if (String(actual) === String(expected)) {
+      passed++;
+      log('PASS  ' + label, 'pass');
+    } else {
+      failed++;
+      log('FAIL  ' + label + '\n        expected: ' + expected + '\n        actual:   ' + actual, 'fail');
+    }
+  }
+
+  function ok(label, value) { eq(label, !!value, true); }
+
+  /* ---------------------------------------------------------------- */
+  /* Unit tests                                                        */
+  /* ---------------------------------------------------------------- */
+  function unitTests() {
+    log('--- rules ---');
+    var c;
+
+    /* FEN round trip */
+    var fens = [
+      Chess.DEFAULT_FEN,
+      'r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1',
+      '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1',
+      'rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8',
+      '4k3/8/8/8/8/8/8/4K2R w K - 0 1'
+    ];
+    for (var i = 0; i < fens.length; i++) {
+      eq('fen round trip #' + (i + 1), new Chess(fens[i]).fen(), fens[i]);
+    }
+
+    /* Opening move counts */
+    c = new Chess();
+    eq('20 legal moves at start', c.moves().length, 20);
+    eq('knight has 2 moves from g1', c.moves({ square: 'g1' }).length, 2);
+    eq('empty square yields no moves', c.moves({ square: 'e5' }).length, 0);
+
+    /* Basic play + SAN */
+    c = new Chess();
+    eq('SAN for e4', c.move('e4').san, 'e4');
+    c.move('e5'); c.move('Nf3'); c.move('Nc6'); c.move('Bb5');
+    eq('Ruy Lopez history', c.history().join(' '), 'e4 e5 Nf3 Nc6 Bb5');
+    eq('pgn movetext', c.pgn(), '1. e4 e5 2. Nf3 Nc6 3. Bb5');
+
+    /* Undo restores the position exactly */
+    c = new Chess();
+    var before = c.fen();
+    c.move('e4');
+    c.undo();
+    eq('undo restores start fen', c.fen(), before);
+
+    c = new Chess('r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1');
+    before = c.fen();
+    c.move('O-O');
+    c.undo();
+    eq('undo restores castling rights', c.fen(), before);
+
+    /* Illegal moves are rejected, not thrown */
+    c = new Chess();
+    eq('illegal move returns null', c.move('e5'), null);
+    eq('nonsense move returns null', c.move('zz9'), null);
+    eq('board untouched after illegal move', c.fen(), Chess.DEFAULT_FEN);
+
+    /* Moving into check is illegal */
+    c = new Chess('4k3/8/8/8/8/8/4r3/4K3 w - - 0 1');
+    ok('king cannot stay on an attacked file', c.moves().indexOf('Ke1') === -1);
+    ok('Kd1 is legal', c.moves().indexOf('Kd1') > -1);
+    ok('Kxe2 is legal', c.moves().indexOf('Kxe2') > -1);
+
+    /* Pinned pieces cannot move: rook e7 pins knight e2 against king e1 */
+    c = new Chess('4k3/4r3/8/8/8/8/4N3/4K3 w - - 0 1');
+    eq('pinned knight has no moves', c.moves({ square: 'e2' }).length, 0);
+
+    /* Blocking a check is legal even when the piece is otherwise free */
+    c = new Chess('4k3/8/8/8/8/8/4N3/4K2r w - - 0 1');
+    eq('only the blocking knight move is legal', c.moves({ square: 'e2' }).join(''), 'Ng1');
+
+    /* Castling */
+    c = new Chess('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
+    ok('white may castle kingside', c.moves().indexOf('O-O') > -1);
+    ok('white may castle queenside', c.moves().indexOf('O-O-O') > -1);
+    c.move('O-O');
+    eq('kingside castle places king on g1', c.get('g1').type, 'k');
+    eq('kingside castle places rook on f1', c.get('f1').type, 'r');
+    eq('h1 is vacated', c.get('h1'), null);
+
+    c = new Chess('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
+    c.move('O-O-O');
+    eq('queenside castle places king on c1', c.get('c1').type, 'k');
+    eq('queenside castle places rook on d1', c.get('d1').type, 'r');
+
+    /* Castling is blocked through check */
+    c = new Chess('4k3/8/8/8/8/8/5r2/R3K2R w KQ - 0 1');
+    ok('cannot castle through an attacked square', c.moves().indexOf('O-O') === -1);
+    ok('queenside still available', c.moves().indexOf('O-O-O') > -1);
+
+    c = new Chess('4k3/8/8/8/8/8/8/Rb2K2R w KQ - 0 1');
+    ok('cannot castle queenside through an occupied b1', c.moves().indexOf('O-O-O') === -1);
+
+    /* Castling rights are lost when a rook moves or is captured. Rxa8 does
+       both at once: white's own a1 rook leaves, and black's a8 rook dies. */
+    c = new Chess('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
+    c.move('Rxa8');
+    eq('Rxa8 clears both queenside rights', c.fen().split(' ')[2], 'Kk');
+
+    c = new Chess('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
+    c.move('Ke2');
+    eq('king move clears both white rights', c.fen().split(' ')[2], 'kq');
+
+    c = new Chess('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
+    c.move('Rh2');
+    eq('h1 rook move clears only white kingside', c.fen().split(' ')[2], 'Qkq');
+
+    /* En passant */
+    c = new Chess('4k3/3p4/8/4P3/8/8/8/4K3 b - - 0 1');
+    c.move('d5');
+    eq('ep square is offered', c.fen().split(' ')[3], 'd6');
+    var ep = c.move('exd6');
+    ok('en passant capture is flagged', ep && ep.isEnPassant);
+    eq('captured pawn is removed', c.get('d5'), null);
+    eq('capturing pawn lands on d6', c.get('d6').color, 'w');
+
+    /* En passant is only available immediately */
+    c = new Chess('4k3/3p4/8/4P3/8/8/8/4K3 b - - 0 1');
+    c.move('d5'); c.move('Ke2'); c.move('Ke7');
+    ok('ep chance expires after a turn', c.moves().indexOf('exd6') === -1);
+
+    /* Promotion */
+    c = new Chess('4k3/P7/8/8/8/8/8/4K3 w - - 0 1');
+    eq('four promotion choices', c.moves({ square: 'a7' }).length, 4);
+    c.move({ from: 'a7', to: 'a8', promotion: 'n' });
+    eq('underpromotion to knight', c.get('a8').type, 'n');
+    c.undo();
+    eq('undo restores the pawn', c.get('a7').type, 'p');
+    c.move('a8=Q');
+    eq('SAN promotion to queen', c.get('a8').type, 'q');
+
+    /* Check, checkmate, stalemate */
+    c = new Chess();
+    c.move('f3'); c.move('e5'); c.move('g4'); c.move('Qh4');
+    ok("fool's mate is checkmate", c.isCheckmate());
+    eq("fool's mate SAN", c.history().pop(), 'Qh4#');
+    eq('winner is black', c.gameResult().winner, 'b');
+
+    c = new Chess('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1');
+    ok('stalemate detected', c.isStalemate());
+    ok('stalemate is not checkmate', !c.isCheckmate());
+    eq('stalemate is a draw', c.gameResult().reason, 'stalemate');
+
+    c = new Chess('4k3/8/8/8/8/8/4q3/4K3 w - - 0 1');
+    ok('king in check is reported', c.inCheck());
+
+    /* Insufficient material */
+    ok('K vs K', new Chess('4k3/8/8/8/8/8/8/4K3 w - - 0 1').isInsufficientMaterial());
+    ok('K+B vs K', new Chess('4k3/8/8/8/8/8/8/3BK3 w - - 0 1').isInsufficientMaterial());
+    ok('K+N vs K', new Chess('4k3/8/8/8/8/8/8/3NK3 w - - 0 1').isInsufficientMaterial());
+    /* c8 and f1 are both light squares, so neither bishop can ever mate. */
+    ok('same-colour bishops', new Chess('2b1k3/8/8/8/8/8/8/4KB2 w - - 0 1').isInsufficientMaterial());
+    /* c8 is light and c1 is dark, so this pair is not automatically drawn. */
+    ok('opposite-colour bishops', !new Chess('2b1k3/8/8/8/8/8/8/2B1K3 w - - 0 1').isInsufficientMaterial());
+    ok('K+R vs K is sufficient', !new Chess('4k3/8/8/8/8/8/8/3RK3 w - - 0 1').isInsufficientMaterial());
+    ok('K+2N vs K is sufficient by material', !new Chess('4k3/8/8/8/8/8/8/2NNK3 w - - 0 1').isInsufficientMaterial());
+
+    /* Fifty-move rule */
+    ok('99 half moves is not yet a draw', !new Chess('4k3/8/8/8/8/8/R7/4K3 w - - 99 60').isFiftyMoveDraw());
+    ok('100 half moves draws', new Chess('4k3/8/8/8/8/8/R7/4K3 w - - 100 60').isFiftyMoveDraw());
+
+    /* Threefold repetition: knights shuffle back and forth */
+    c = new Chess();
+    ok('start position is not a repetition', !c.isThreefoldRepetition());
+    var cycle = ['Nf3', 'Nf6', 'Ng1', 'Ng8'];
+    for (i = 0; i < 8; i++) c.move(cycle[i % 4]);
+    ok('threefold repetition detected', c.isThreefoldRepetition());
+    c.undo();
+    ok('undo clears the repetition', !c.isThreefoldRepetition());
+
+    /* SAN disambiguation: two rooks on rank 1 with a clear path between them */
+    c = new Chess('4k3/8/8/8/8/8/4K3/R6R w - - 0 1');
+    var all = c.moves();
+    ok('rooks disambiguate by file', all.indexOf('Rab1') > -1 && all.indexOf('Rhb1') > -1);
+
+    /* Filtering by square must not lose the disambiguating letter */
+    eq('single-square SAN still disambiguates',
+       c.moves({ square: 'a1' }).indexOf('Rab1') > -1, true);
+
+    /* Same file, so the rank is what separates them */
+    c = new Chess('7k/8/8/R7/8/8/8/R3K3 w - - 0 1');
+    all = c.moves();
+    ok('rooks disambiguate by rank', all.indexOf('R1a3') > -1 && all.indexOf('R5a3') > -1);
+
+    /* An unambiguous rook move carries no extra letter */
+    c = new Chess('4k3/8/8/8/8/8/8/R3K2R w - - 0 1');
+    ok('no disambiguation when the king blocks', c.moves({ square: 'a1' }).indexOf('Rb1') > -1);
+
+    c = new Chess('4k3/8/8/8/8/2N1N3/8/4K3 w - - 0 1');
+    ok('knights disambiguate', c.moves().indexOf('Ncd5') > -1 && c.moves().indexOf('Ned5') > -1);
+
+    /* Coordinate notation accepted */
+    c = new Chess();
+    eq('coordinate notation g1f3', c.move('g1f3').san, 'Nf3');
+
+    /* History with verbose flag survives replay */
+    c = new Chess();
+    c.move('e4'); c.move('c5'); c.move('Nf3');
+    var h = c.history({ verbose: true });
+    eq('verbose history length', h.length, 3);
+    eq('verbose history san', h[2].san, 'Nf3');
+    eq('position intact after history()', c.fen(), 'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2');
+
+    /* isAttacked */
+    c = new Chess();
+    ok('e2 defended by white at start', c.isAttacked('e2', 'w'));
+    ok('e4 unattacked by black at start', !c.isAttacked('e4', 'b'));
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Languages                                                         */
+  /* ---------------------------------------------------------------- */
+  function languageTests() {
+    log('');
+    log('--- languages ---');
+
+    var report = I18n.audit();
+    var code;
+
+    ok('English is the reference table', I18n.has('en'));
+    ok('more than one language is offered', I18n.languages.length > 1);
+
+    for (var i = 0; i < I18n.languages.length; i++) {
+      var language = I18n.languages[i];
+      ok('language "' + language.code + '" has a table', I18n.has(language.code));
+      ok('language "' + language.code + '" declares a name', !!language.name);
+      ok('language "' + language.code + '" declares a direction',
+         language.dir === 'ltr' || language.dir === 'rtl');
+    }
+
+    /* Every advertised language must be complete: a half-translated table
+       still renders, because missing keys fall back to English, so nothing
+       else would catch a gap. */
+    for (code in report) {
+      if (!Object.prototype.hasOwnProperty.call(report, code)) continue;
+      eq('"' + code + '" translates every key',
+         report[code].missing.length, 0);
+      if (report[code].missing.length) {
+        log('        missing: ' + report[code].missing.join(', '), 'fail');
+      }
+      eq('"' + code + '" has no keys English lacks', report[code].unknown.length, 0);
+      if (report[code].unknown.length) {
+        log('        unknown: ' + report[code].unknown.join(', '), 'fail');
+      }
+    }
+
+    /* Placeholders have to survive translation or the text loses its number. */
+    var placeholderKeys = ['status.toMove', 'status.checkmate', 'status.drawBy',
+                           'learn.progress', 'learn.counter', 'learn.intro',
+                           'puzzles.progress', 'puzzles.counter',
+                           'task.wrongMove', 'task.leftToCapture', 'puzzles.stronger'];
+
+    for (var k = 0; k < placeholderKeys.length; k++) {
+      var key = placeholderKeys[k];
+      var wanted = (I18n.t.call({}, key), null);
+      /* Compare the set of {placeholders} in each language against English. */
+      var reference = englishPlaceholders(key);
+      for (var j = 0; j < I18n.languages.length; j++) {
+        var lang = I18n.languages[j].code;
+        if (lang === 'en') continue;
+        eq('"' + lang + '" keeps the placeholders in ' + key,
+           placeholdersFor(lang, key), reference);
+      }
+    }
+
+    /* A language that is not defined must not be selectable. */
+    ok('unknown language is rejected', !I18n.set('xx'));
+
+    /* Switching languages round trips. */
+    var original = I18n.current();
+    I18n.set('ru');
+    eq('switching to ru takes effect', I18n.current(), 'ru');
+    eq('ru translates a known key', I18n.t('tab.play'), 'Игра');
+    I18n.set(original);
+    eq('switching back works', I18n.current(), original);
+
+    /* The guide falls back rather than rendering an empty page. */
+    for (var g = 0; g < I18n.languages.length; g++) {
+      var guideCode = I18n.languages[g].code;
+      var content = CHESS_GUIDE[guideCode] || CHESS_GUIDE.en;
+      ok('guide resolves for "' + guideCode + '"', !!content && content.sections.length > 0);
+    }
+  }
+
+  function placeholdersFor(code, key) {
+    var previous = I18n.current();
+    I18n.set(code);
+    var raw = I18n.t(key);
+    I18n.set(previous);
+    return (raw.match(/\{\w+\}/g) || []).sort().join(',');
+  }
+
+  function englishPlaceholders(key) { return placeholdersFor('en', key); }
+
+  /* ---------------------------------------------------------------- */
+  /* AI                                                                */
+  /* ---------------------------------------------------------------- */
+  function aiTests() {
+    log('');
+    log('--- ai ---');
+
+    var ai = new ChessAI(3);
+    var c, result, i;
+
+    /* Searching must leave the caller's game exactly as it found it. */
+    c = new Chess();
+    var before = c.fen();
+    ai.findMove(c);
+    eq('search does not disturb the position', c.fen(), before);
+    eq('search does not leave history behind', c.historyLength(), 0);
+
+    /* Back-rank mate in one. Only levels 3-4 have blunderChance 0, so only
+       those two can be asserted to find it on every run - level 2 deliberately
+       misses things sometimes (that is what "Casual" means), and asserting it
+       always finds the mate was a flaky test, not a property of the AI. */
+    var mateIn1 = '6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1';
+    for (i = 3; i <= 4; i++) {
+      ai.setLevel(i);
+      result = ai.findMove(new Chess(mateIn1));
+      eq('level ' + i + ' finds Ra8#', result.from + result.to, 'a1a8');
+    }
+
+    ai.setLevel(2);
+    result = ai.findMove(new Chess(mateIn1));
+    ok('level 2 still returns a legal move', !!new Chess(mateIn1).move({ from: result.from, to: result.to, promotion: result.promotion }));
+
+    /* A queen hanging on an open file */
+    ai.setLevel(3);
+    result = ai.findMove(new Chess('4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1'));
+    eq('takes the free queen', result.from + result.to, 'd1d5');
+
+    /* Do not take a defended pawn with the queen and lose her */
+    ai.setLevel(4);
+    result = ai.findMove(new Chess('rnbqkbnr/ppp1pppp/8/3p4/8/4P3/PPPP1PPP/RNBQKBNR w KQkq - 0 2'));
+    ok('does not play Qxd5 into a hanging queen', !(result.from === 'd1' && result.to === 'd5'));
+
+    /* Every level returns a legal move from the opening position */
+    for (i = 1; i <= 4; i++) {
+      ai.setLevel(i);
+      c = new Chess();
+      result = ai.findMove(c);
+      ok('level ' + i + ' returns a legal move', !!c.move({ from: result.from, to: result.to, promotion: result.promotion }));
+    }
+
+    /* Nothing to play once the game is over */
+    ai.setLevel(3);
+    eq('no move in a checkmated position', ai.findMove(new Chess('rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3')), null);
+    eq('no move in a stalemated position', ai.findMove(new Chess('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1')), null);
+
+    /* Promotion is handled through the search's move descriptor. The rook on
+       b7 takes the pawn next move, so promoting now is the only way to keep
+       it - an unstoppable pawn would be a weak test, since delaying costs
+       nothing and the score would be a coin flip. */
+    ai.setLevel(3);
+    c = new Chess('7k/Pr6/8/8/8/7K/8/8 w - - 0 1');
+    result = ai.findMove(c);
+    ok('promotes a pawn that is about to be taken',
+       result.to === 'a8' && result.promotion === 'q');
+
+    /* Mate is preferred over merely winning material */
+    ai.setLevel(4);
+    result = ai.findMove(new Chess('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1'));
+    ok('mate scores above material', result.score > 50000);
+
+    /* The strong level should respect its time budget */
+    var started = Date.now();
+    ai.setLevel(4);
+    ai.findMove(new Chess('r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4'));
+    var elapsed = Date.now() - started;
+    ok('level 4 stays near its time budget (' + elapsed + 'ms)', elapsed < 6000);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Perft — the real proof that move generation is correct            */
+  /* ---------------------------------------------------------------- */
+  var PERFT = [
+    { name: 'start position', fen: Chess.DEFAULT_FEN,
+      counts: [20, 400, 8902, 197281] },
+    { name: 'kiwipete', fen: 'r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1',
+      counts: [48, 2039, 97862] },
+    { name: 'endgame (position 3)', fen: '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1',
+      counts: [14, 191, 2812, 43238, 674624] },
+    { name: 'promotions (position 4)', fen: 'r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1',
+      counts: [6, 264, 9467, 422333] },
+    { name: 'position 4 mirrored', fen: 'r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1',
+      counts: [6, 264, 9467, 422333] },
+    { name: 'position 5', fen: 'rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8',
+      counts: [44, 1486, 62379, 2103487] },
+    { name: 'position 6', fen: 'r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10',
+      counts: [46, 2079, 89890] }
+  ];
+
+  var perftIndex = 0;
+
+  function runOnePerft() {
+    if (perftIndex >= PERFT.length) return finish();
+
+    var test = PERFT[perftIndex++];
+    var game = new Chess(test.fen);
+    var started = Date.now();
+
+    for (var d = 0; d < test.counts.length; d++) {
+      eq('perft(' + (d + 1) + ') ' + test.name, game.perft(d + 1), test.counts[d]);
+    }
+    log('      (' + test.name + ' took ' + (Date.now() - started) + 'ms)');
+
+    setTimeout(runOnePerft, 0);
+  }
+
+  function finish() {
+    var el = document.getElementById('summary');
+    el.innerHTML = '<span class="' + (failed ? 'fail' : 'pass') + '">RESULT: ' +
+      passed + ' passed, ' + failed + ' failed</span>';
+    window.__testsDone = true;
+    window.__testsFailed = failed;
+  }
+
+  try {
+    unitTests();
+    languageTests();
+    aiTests();
+    log('');
+    log('--- perft ---');
+    setTimeout(runOnePerft, 0);
+  } catch (err) {
+    failed++;
+    log('EXCEPTION: ' + (err && err.stack ? err.stack : err), 'fail');
+    finish();
+  }
+})();
+</script>
+</body>
+</html>

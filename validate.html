@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Curriculum validation</title>
+<style>
+  body { font: 14px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; background: #14161a; color: #dfe3ea; padding: 24px; }
+  h1 { font-size: 16px; color: #8fb6ff; }
+  .pass { color: #63d18a; }
+  .fail { color: #ff6b6b; font-weight: bold; }
+  .head { color: #ffd479; margin-top: 10px; }
+  #summary { margin-top: 16px; padding: 10px; border-left: 3px solid #8fb6ff; }
+  pre { white-space: pre-wrap; margin: 0; }
+</style>
+</head>
+<body>
+<h1>Lesson and puzzle validation</h1>
+<pre id="out">running…</pre>
+<div id="summary"></div>
+
+<script src="js/engine.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/lessons.js"></script>
+<script src="js/puzzles.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var out = document.getElementById('out');
+  var lines = [];
+  var passed = 0, failed = 0;
+
+  function log(s, cls) {
+    lines.push(cls ? '<span class="' + cls + '">' + s + '</span>' : s);
+    out.innerHTML = lines.join('\n');
+  }
+
+  function check(label, condition, detail) {
+    if (condition) { passed++; return true; }
+    failed++;
+    log('FAIL  ' + label + (detail ? '\n        ' + detail : ''), 'fail');
+    return false;
+  }
+
+  /* Rebuild a FEN with a different side to move - drills let the learner keep
+     playing while the opponent stays put, which is not a legal turn order. */
+  function forceTurn(fen, color) {
+    var f = fen.split(' ');
+    f[1] = color;
+    f[3] = '-';
+    return f.join(' ');
+  }
+
+  function countPieces(game, color, excludeKing, onlyType) {
+    var rows = game.board();
+    var n = 0;
+    for (var r = 0; r < 8; r++) {
+      for (var c = 0; c < 8; c++) {
+        var p = rows[r][c];
+        if (!p || p.color !== color) continue;
+        if (excludeKing && p.type === 'k') continue;
+        if (onlyType && p.type !== onlyType) continue;
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /* --- position sanity --------------------------------------------- */
+
+  function validatePosition(id, fen, requireBothKings) {
+    var game;
+    try {
+      game = new Chess(fen);
+    } catch (err) {
+      check(id + ': FEN parses', false, String(err));
+      return null;
+    }
+
+    check(id + ': FEN round trips', game.fen() === fen,
+          'wrote ' + fen + '\n        got   ' + game.fen());
+
+    if (requireBothKings) {
+      check(id + ': both kings on the board',
+            !!game.kingSquare('w') && !!game.kingSquare('b'));
+    }
+
+    /* If the side that is NOT to move is in check, the position could never
+       have arisen - the previous move would have been illegal. */
+    var idle = game.turn() === 'w' ? 'b' : 'w';
+    var idleKing = game.kingSquare(idle);
+    if (idleKing) {
+      check(id + ': side not to move is not in check',
+            !game.isAttacked(idleKing, game.turn()),
+            'the ' + (idle === 'w' ? 'white' : 'black') + ' king on ' + idleKing + ' is attacked');
+    }
+
+    return game;
+  }
+
+  /* --- move sequences ---------------------------------------------- */
+
+  /* Plays a list of SAN moves, asserting each is legal and that the notation
+     written in the curriculum matches exactly what the engine produces. */
+  function playSequence(id, game, moves, label) {
+    for (var i = 0; i < moves.length; i++) {
+      var written = moves[i];
+      var result = game.move(written);
+
+      if (!check(id + ': ' + label + '[' + i + '] "' + written + '" is legal', !!result,
+                 'position: ' + game.fen() + '\n        legal here: ' + game.moves().join(' '))) {
+        return false;
+      }
+
+      check(id + ': ' + label + '[' + i + '] notation is exactly "' + written + '"',
+            result.san === written,
+            'engine writes it as "' + result.san + '"');
+
+      if (written.indexOf('#') > -1) {
+        check(id + ': ' + label + '[' + i + '] "' + written + '" really is checkmate', game.isCheckmate());
+      } else if (written.indexOf('+') > -1) {
+        check(id + ': ' + label + '[' + i + '] "' + written + '" really is check',
+              game.inCheck() && !game.isCheckmate());
+      } else {
+        check(id + ': ' + label + '[' + i + '] "' + written + '" is correctly unmarked',
+              !game.inCheck(), 'it actually gives check');
+      }
+    }
+    return true;
+  }
+
+  /* --- capture drills ----------------------------------------------- */
+
+  /* Depth-first proof that the drill piece really can take everything on its
+     own, with the opponent frozen the way the app freezes it. */
+  function drillSolvable(fen, pieceType, seen) {
+    seen = seen || {};
+    if (seen[fen]) return false;
+    seen[fen] = true;
+
+    var game = new Chess(fen);
+    if (countPieces(game, 'b', true) === 0) return true;
+
+    var moves = game.moves({ verbose: true });
+    for (var i = 0; i < moves.length; i++) {
+      if (!moves[i].isCapture || moves[i].piece !== pieceType) continue;
+      var next = new Chess(fen);
+      next.move(moves[i].san);
+      if (drillSolvable(forceTurn(next.fen(), 'w'), pieceType, seen)) return true;
+    }
+    return false;
+  }
+
+  /* --- task validation --------------------------------------------- */
+
+  function validateTask(id, startFen, task, setup) {
+    var game = new Chess(startFen);
+
+    if (setup && setup.length) {
+      if (!playSequence(id, game, setup, 'setup')) return;
+    }
+
+    if (task.type === 'captureAll') {
+      check(id + ': drill names the piece that does the work', !!task.piece);
+      check(id + ': drill has enemy pieces to capture', countPieces(game, 'b', true) > 0);
+      check(id + ': drill has exactly one of the drilled piece',
+            countPieces(game, 'w', true, task.piece) === 1,
+            'found ' + countPieces(game, 'w', true, task.piece));
+      check(id + ': drill is solvable with the ' + task.piece + ' alone',
+            drillSolvable(forceTurn(game.fen(), 'w'), task.piece));
+      return;
+    }
+
+    if (task.type === 'mate') {
+      check(id + ': mate practice is not already over', !game.isGameOver());
+      check(id + ': mate practice has mating material', !game.isInsufficientMaterial());
+      check(id + ': mate practice starts with the learner to move', game.turn() === 'w');
+      return;
+    }
+
+    if (task.type === 'line') {
+      check(id + ': line is not empty', task.line && task.line.length > 0);
+      if (!task.line || !task.line.length) return;
+
+      /* Alternatives have to be legal in the position they are offered in,
+         so check them before the scripted move is played. */
+      var accept = task.accept || {};
+      for (var key in accept) {
+        if (!Object.prototype.hasOwnProperty.call(accept, key)) continue;
+        var plyIndex = parseInt(key, 10);
+        check(id + ': accept key ' + key + ' is a learner ply', plyIndex % 2 === 0);
+
+        if (accept[key] === '*') continue;
+
+        var probe = new Chess(startFen);
+        if (setup && setup.length) {
+          for (var s = 0; s < setup.length; s++) probe.move(setup[s]);
+        }
+        var okToHere = true;
+        for (var p = 0; p < plyIndex; p++) {
+          if (!probe.move(task.line[p])) { okToHere = false; break; }
+        }
+        if (!okToHere) continue;
+
+        for (var a = 0; a < accept[key].length; a++) {
+          var alt = accept[key][a];
+          var trial = new Chess(probe.fen());
+          var res = trial.move(alt);
+          check(id + ': alternative "' + alt + '" at ply ' + key + ' is legal', !!res,
+                'legal here: ' + probe.moves().join(' '));
+          if (res) {
+            check(id + ': alternative "' + alt + '" notation matches', res.san === alt,
+                  'engine writes it as "' + res.san + '"');
+          }
+        }
+      }
+
+      playSequence(id, game, task.line, 'line');
+
+      /* A tactic that ends by winning material should not leave the learner
+         in check or in a lost position - a cheap sanity net. */
+      check(id + ': learner is not left in check at the end',
+            !(game.turn() === 'w' && game.inCheck()),
+            'final position: ' + game.fen());
+    }
+  }
+
+  /* --- run ---------------------------------------------------------- */
+
+  function run() {
+    var seenIds = {};
+    var i, j;
+
+    log('--- lessons ---', 'head');
+
+    var totalLessons = 0;
+    for (i = 0; i < CHESS_CURRICULUM.length; i++) {
+      var chapter = CHESS_CURRICULUM[i];
+      check('chapter id "' + chapter.id + '" is unique', !seenIds['c:' + chapter.id]);
+      seenIds['c:' + chapter.id] = true;
+      check('chapter "' + chapter.id + '" has a title', !!chapter.title);
+      check('chapter "' + chapter.id + '" has lessons', chapter.lessons && chapter.lessons.length > 0);
+
+      for (j = 0; j < chapter.lessons.length; j++) {
+        var lesson = chapter.lessons[j];
+        var id = chapter.id + '/' + lesson.id;
+        totalLessons++;
+
+        check(id + ': id is unique', !seenIds[id]);
+        seenIds[id] = true;
+        check(id + ': has a title', !!lesson.title);
+        check(id + ': has explanatory text', !!lesson.text && lesson.text.length > 40);
+
+        var game = validatePosition(id, lesson.fen, !!lesson.task);
+        if (!game) continue;
+
+        if (lesson.orientation) {
+          check(id + ': orientation is w or b', lesson.orientation === 'w' || lesson.orientation === 'b');
+        }
+
+        if (lesson.highlight) {
+          for (var h = 0; h < lesson.highlight.length; h++) {
+            check(id + ': highlight square "' + lesson.highlight[h] + '" exists',
+                  Chess.SQUARES[lesson.highlight[h]] !== undefined);
+          }
+        }
+
+        if (lesson.setup && !lesson.task) {
+          playSequence(id, new Chess(lesson.fen), lesson.setup, 'setup');
+        }
+
+        if (lesson.demo) {
+          var demoGame = new Chess(lesson.fen);
+          if (lesson.setup) playSequence(id, demoGame, lesson.setup, 'setup');
+          playSequence(id, demoGame, lesson.demo, 'demo');
+        }
+
+        if (lesson.task) {
+          check(id + ': task has an instruction', !!lesson.task.instruction);
+          check(id + ': task has a hint', !!lesson.task.hint);
+          check(id + ': task has a success message', !!lesson.task.success);
+          validateTask(id, lesson.fen, lesson.task, lesson.setup);
+        }
+      }
+    }
+    log('checked ' + totalLessons + ' lessons in ' + CHESS_CURRICULUM.length + ' chapters', 'pass');
+
+    log('', null);
+    log('--- puzzles ---', 'head');
+
+    for (i = 0; i < CHESS_PUZZLES.length; i++) {
+      var puzzle = CHESS_PUZZLES[i];
+      var pid = 'puzzle/' + puzzle.id;
+
+      check(pid + ': id is unique', !seenIds[pid]);
+      seenIds[pid] = true;
+      check(pid + ': has a title', !!puzzle.title);
+      check(pid + ': has a theme', !!puzzle.theme);
+      check(pid + ': difficulty is 1-3', puzzle.difficulty >= 1 && puzzle.difficulty <= 3);
+      check(pid + ': has a hint', !!puzzle.hint);
+      check(pid + ': has a success message', !!puzzle.success);
+
+      var pgame = validatePosition(pid, puzzle.fen, true);
+      if (!pgame) continue;
+
+      check(pid + ': solver has a move to make', !pgame.isGameOver());
+      validateTask(pid, puzzle.fen, { type: 'line', line: puzzle.line, accept: puzzle.accept }, null);
+
+      /* A puzzle should have a point: it must end in mate or win material. */
+      var solved = new Chess(puzzle.fen);
+      var okLine = true;
+      for (j = 0; j < puzzle.line.length; j++) {
+        if (!solved.move(puzzle.line[j])) { okLine = false; break; }
+      }
+      if (okLine) {
+        var endsInMate = solved.isCheckmate();
+        var startMaterial = countPieces(new Chess(puzzle.fen), 'b', true);
+        var endMaterial = countPieces(solved, 'b', true);
+        check(pid + ': the line mates or wins material',
+              endsInMate || endMaterial < startMaterial,
+              'no mate and black still has ' + endMaterial + ' pieces');
+      }
+    }
+    log('checked ' + CHESS_PUZZLES.length + ' puzzles', 'pass');
+  }
+
+  try {
+    run();
+  } catch (err) {
+    failed++;
+    log('EXCEPTION: ' + (err && err.stack ? err.stack : err), 'fail');
+  }
+
+  document.getElementById('summary').innerHTML =
+    '<span class="' + (failed ? 'fail' : 'pass') + '">RESULT: ' + passed + ' checks passed, ' + failed + ' failed</span>';
+  window.__validationDone = true;
+  window.__validationFailed = failed;
+})();
+</script>
+</body>
+</html>

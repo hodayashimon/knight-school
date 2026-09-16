@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Knight School</title>
+<meta name="description" content="A complete chess game with an interactive course: how the pieces move, the special rules, tactics, mating patterns, openings and endgames.">
+<meta name="theme-color" content="#14161a">
+<link rel="stylesheet" href="css/style.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">&#9816;</span>
+      <span data-i18n="app.name">Knight School</span>
+      <span class="sub" data-i18n="app.tagline">play, learn, solve</span>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Mode">
+      <button class="tab" role="tab" data-mode="play" data-i18n="tab.play" aria-selected="true">Play</button>
+      <button class="tab" role="tab" data-mode="learn" data-i18n="tab.learn" aria-selected="false">Learn</button>
+      <button class="tab" role="tab" data-mode="puzzles" data-i18n="tab.puzzles" aria-selected="false">Puzzles</button>
+      <button class="tab" role="tab" data-mode="guide" data-i18n="tab.guide" aria-selected="false">Guide</button>
+    </nav>
+
+    <div class="lang">
+      <label class="visually-hidden" for="language" data-i18n="lang.label">Language</label>
+      <select id="language" aria-label="Language"></select>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="board-area">
+      <div class="status" id="status" role="status" aria-live="polite">
+        <span class="dot w"></span><span data-i18n="status.loading">Loading…</span>
+      </div>
+
+      <div class="captured" id="captured-top" aria-hidden="true"></div>
+
+      <div class="board-wrap">
+        <div id="board" aria-label="Chess board"></div>
+      </div>
+
+      <div class="captured" id="captured-bottom" aria-hidden="true"></div>
+    </section>
+
+    <aside class="side" id="side"></aside>
+  </main>
+
+  <p class="footnote" data-i18n-html="footnote">
+    Click or drag to move. In Play mode, <span class="kbd">f</span> flips the board and
+    <span class="kbd">u</span> takes a move back.
+  </p>
+
+</div>
+
+<script src="js/i18n.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/board.js"></script>
+<script src="js/lessons.js"></script>
+<script src="js/puzzles.js"></script>
+<script src="js/guide.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
