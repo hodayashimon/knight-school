@@ -73,9 +73,35 @@ js/lessons.js       curriculum data
 js/puzzles.js       puzzle data
 js/guide.js         in-app manual data
 js/app.js           the four modes, wired together
+sw.js               offline caching for the hosted copy — see below
 tests.html          engine and AI test suite
 validate.html       curriculum validation
 ```
+
+## Running it offline
+
+The **local copy** (opened from disk, or the desktop shortcut) already works with
+no connection at all - the app never makes a network call, so there is nothing
+for a connection to interrupt.
+
+A copy opened from a **URL** (GitHub Pages or anywhere else it is hosted) is a
+website: the first load needs a connection, same as any site. `sw.js` is what
+makes it keep working after that. It is a service worker that caches every asset
+the first time the page loads successfully, and serves that cache when a later
+load has no network - open it once while online, and it keeps working offline
+from then on, including installed as a PWA.
+
+It is registered from `index.html`, guarded to skip `file://` entirely:
+service workers require a secure context, which `file://` never is and the
+local copy does not need one anyway. `localhost` counts as secure for testing,
+but a minimal hand-rolled server can still trip up registration in ways a real
+static host will not - if you see a service-worker console error while testing
+locally, check whether it reproduces on the actual hosted URL before treating
+it as a bug in `sw.js`.
+
+An update pushed to the hosted copy reaches a visitor the next time they have a
+connection - the worker fetches fresh and re-populates the cache rather than
+serving a stale copy forever.
 
 ## Correctness
 
